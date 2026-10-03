@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Peningkat Foto & Video</title>
+  <style>
+    :root { color-scheme: dark; --bg:#10131a; --panel:#191e29; --line:#2b3342; --accent:#7c6cff; }
+    * { box-sizing:border-box }
+    body { margin:0; font:16px system-ui,sans-serif; background:var(--bg); color:#f5f6fa }
+    main { width:min(900px,94%); margin:36px auto }
+    h1 { margin-bottom:6px }
+    .muted { color:#aab2c2 }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:20px; margin:18px 0 }
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center }
+    label,button,.button { font-weight:600 }
+    input,select,button,.button { border:1px solid var(--line); border-radius:10px; padding:10px 12px; color:#fff; background:#222938 }
+    input[type="range"] { padding:0; accent-color:var(--accent) }
+    button,.button { cursor:pointer; background:var(--accent); border:0; text-decoration:none; display:inline-block }
+    button:disabled { opacity:.5; cursor:not-allowed }
+    .control { display:grid; gap:7px; min-width:180px; flex:1 }
+    .preview { max-width:100%; max-height:480px; display:block; margin:16px auto 0; border-radius:10px; background:#080a0e }
+    video { width:100%; max-height:480px }
+    canvas { display:none }
+    .status { min-height:1.5em; color:#c9c4ff }
+    .note { font-size:.9rem; line-height:1.5 }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Peningkat Foto & Video</h1>   <h3>By  ZamzZz_026</h3>
+  <p class="muted">Atur ukuran dan tampilan media, lalu simpan hasilnya.</p>
+
+  <section class="card">
+    <h2>Foto</h2>
+    <div class="row">
+      <input id="photoFile" type="file" accept="image/*">
+      <label class="control">Skala keluaran
+        <select id="scale">
+          <option value="1">1× (ukuran asli)</option>
+          <option value="2" selected>2×</option>
+          <option value="3">3×</option>
+          <option value="4">4×</option>
+        </select>
+      </label>
+      <label class="control">Ketajaman: <span id="sharpValue">30</span>
+        <input id="sharp" type="range" min="0" max="100" value="30">
+      </label>
+      <button id="savePhoto" disabled>Proses & unduh foto</button>
+    </div>
+    <img id="photoPreview" class="preview" alt="Pratinjau foto" hidden>
+    <canvas id="photoCanvas"></canvas>
+    <p id="photoStatus" class="status" aria-live="polite"></p>
+  </section>
+
+  <section class="card">
+    <h2>Video</h2>
+    <div class="row">
+      <input id="videoFile" type="file" accept="video/*">
+      <label class="control">Tampilan
+        <select id="videoLook">
+          <option value="none">Normal</option>
+          <option value="contrast">Kontras & tajam</option>
+          <option value="bright">Lebih cerah</option>
+        </select>
+      </label>
+      <button id="startVideo" disabled>Mulai proses</button>
+      <button id="stopVideo" disabled>Hentikan & simpan</button>
+    </div>
+    <video id="videoPreview" controls playsinline hidden></video>
+    <canvas id="videoCanvas"></canvas>
+    <p id="videoStatus" class="status" aria-live="polite"></p>
+    <p class="muted note">Video diputar dan direkam ulang saat proses berjalan. Jangan pindah tab atau mengunci layar sampai selesai. Audio mungkin tidak ikut tersimpan, tergantung dukungan browser.</p>
+  </section>
+</main>
+
+<script>
+  const photoFile = document.querySelector("#photoFile");
+  const photoPreview = document.querySelector("#photoPreview");
+  const photoCanvas = document.querySelector("#photoCanvas");
+  const photoStatus = document.querySelector("#photoStatus");
+  const savePhoto = document.querySelector("#savePhoto");
+  const sharp = document.querySelector("#sharp");
+  let photoUrl = "";
+
+  photoFile.addEventListener("change", () => {
+    const file = photoFile.files[0];
+    savePhoto.disabled = !file;
+    if (!file) return;
+    if (photoUrl) URL.revokeObjectURL(photoUrl);
+    photoUrl = URL.createObjectURL(file);
+    photoPreview.src = photoUrl;
+    photoPreview.hidden = false;
+    photoStatus.textContent = "Foto siap diproses.";
+  });
+
+  sharp.addEventListener("input", () => {
+    document.querySelector("#sharpValue").textContent = sharp.value;
+  });
+
+  savePhoto.addEventListener("click", async () => {
+    const file = photoFile.files[0];
+    if (!file) return;
+    savePhoto.disabled = true;
+    photoStatus.textContent = "Memproses foto…";
+
+    try {
+      const image = new Image();
+      image.src = photoUrl;
+      await image.decode();
+
+      const scale = Number(document.querySelector("#scale").value);
+      const width = Math.round(image.naturalWidth * scale);
+      const height = Math.round(image.naturalHeight * scale);
+      if (width * height > 50000000) {
+        throw new Error("Ukuran keluaran terlalu besar. Pilih skala lebih kecil.");
+      }
+
+      photoCanvas.width = width;
+      photoCanvas.height = height;
+      const ctx = photoCanvas.getContext("2d");
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.filter = `contrast(${100 + Number(sharp.value) * 0.25}%) saturate(105%)`;
+      ctx.drawImage(image, 0, 0, width, height);
+      ctx.filter = "none";
+
+      const blob = await new Promise(resolve =>
+        photoCanvas.toBlob(resolve, "image/png")
+      );
+      if (!blob) throw new Error("Gagal membuat file foto.");
+
+      download(blob, `foto-ditingkatkan-${scale}x.png`);
+      photoStatus.textContent = `Selesai: ${width} × ${height} piksel.`;
+    } catch (error) {
+      photoStatus.textContent = error.message || "Terjadi kesalahan saat memproses.";
+    } finally {
+      savePhoto.disabled = false;
+    }
+  });
+
+  const videoFile = document.querySelector("#videoFile");
+  const video = document.querySelector("#videoPreview");
+  const videoCanvas = document.querySelector("#videoCanvas");
+  const startVideo = document.querySelector("#startVideo");
+  const stopVideo = document.querySelector("#stopVideo");
+  const videoStatus = document.querySelector("#videoStatus");
+  let videoUrl = "", recorder = null, chunks = [], animationId = 0;
+
+  videoFile.addEventListener("change", () => {
+    const file = videoFile.files[0];
+    startVideo.disabled = !file;
+    if (!file) return;
+    if (videoUrl) URL.revokeObjectURL(videoUrl);
+    videoUrl = URL.createObjectURL(file);
+    video.src = videoUrl;
+    video.hidden = false;
+    videoStatus.textContent = "Video siap diproses.";
+  });
+
+  function drawVideoFrame() {
+    if (video.paused || video.ended) return;
+    const ctx = videoCanvas.getContext("2d");
+    const look = document.querySelector("#videoLook").value;
+    ctx.filter = look === "contrast"
+      ? "contrast(1.18) saturate(1.08)"
+      : look === "bright" ? "brightness(1.12) contrast(1.04)" : "none";
+    ctx.drawImage(video, 0, 0, videoCanvas.width, videoCanvas.height);
+    ctx.filter = "none";
+    animationId = requestAnimationFrame(drawVideoFrame);
+  }
+
+  startVideo.addEventListener("click", async () => {
+    if (!video.src || !("MediaRecorder" in window) ||
+        !videoCanvas.captureStream) {
+      videoStatus.textContent = "Browser ini belum mendukung ekspor video.";
+      return;
+    }
+
+    try {
+      video.pause();
+      video.currentTime = 0;
+      await new Promise(resolve => {
+        if (video.readyState >= 1) resolve();
+        else video.addEventListener("loadedmetadata", resolve, { once:true });
+      });
+
+      videoCanvas.width = video.videoWidth;
+      videoCanvas.height = video.videoHeight;
+      if (!videoCanvas.width || !videoCanvas.height) {
+        throw new Error("Ukuran video tidak terbaca.");
+      }
+
+      const stream = videoCanvas.captureStream(30);
+      const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+        ? "video/webm;codecs=vp9"
+        : "video/webm";
+      chunks = [];
+      recorder = new MediaRecorder(stream, { mimeType:mime });
+      recorder.ondataavailable = event => {
+        if (event.data.size) chunks.push(event.data);
+      };
+      recorder.onstop = () => {
+        cancelAnimationFrame(animationId);
+        stream.getTracks().forEach(track => track.stop());
+        const blob = new Blob(chunks, { type:"video/webm" });
+        download(blob, "video-ditingkatkan.webm");
+        videoStatus.textContent = "Selesai. Video sudah diunduh.";
+        startVideo.disabled = false;
+        stopVideo.disabled = true;
+      };
+
+      recorder.start();
+      startVideo.disabled = true;
+      stopVideo.disabled = false;
+      videoStatus.textContent = "Memproses video… biarkan video berjalan sampai selesai.";
+      await video.play();
+      drawVideoFrame();
+      video.onended = () => {
+        if (recorder && recorder.state !== "inactive") recorder.stop();
+      };
+    } catch (error) {
+      videoStatus.textContent = error.message || "Tidak dapat memproses video.";
+      startVideo.disabled = false;
+      stopVideo.disabled = true;
+    }
+  });
+
+  stopVideo.addEventListener("click", () => {
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+    video.pause();
+  });
+
+  function download(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+</script>
+</body>
+</html>
